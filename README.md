@@ -20,7 +20,7 @@ It turns a raw briefing into:
 - TypeScript
 - Prisma
 - SQLite
-- OpenAI Responses API
+- Configurable AI provider over HTTP
 
 ## Setup
 
@@ -34,8 +34,10 @@ Then fill in the server-side values:
 
 ```bash
 DATABASE_URL="file:./dev.db"
-OPENAI_API_KEY="sk-..."
-OPENAI_MODEL="gpt-5.4"
+AI_API_URL="https://your-provider.example/v1/chat/completions"
+AI_API_KEY="replace-if-required"
+AI_MODEL="your-model"
+AI_PROVIDER_NAME="your-provider"
 ADMIN_EMAIL="admin@example.com"
 ADMIN_PASSWORD="replace-me"
 SESSION_SECRET="replace-me"
@@ -51,10 +53,10 @@ npx prisma db push
 npm run dev
 ```
 
-Check the OpenAI wiring without making a model call:
+Check the AI provider wiring without making a model call:
 
 ```bash
-curl http://localhost:3000/api/openai/health
+curl http://localhost:3000/api/ai/health
 ```
 
 Open:
@@ -72,7 +74,7 @@ http://localhost:3000
 
 ## Advisor SDK MVP
 
-The reusable SDK is in `lib/advisorSdk.ts` and is exposed as an authenticated HTTP API for repository-style reviews focused on logic and conformity issues. It uses the official OpenAI Node SDK and the Responses API with strict structured output.
+The reusable SDK is in `lib/advisorSdk.ts` and is exposed as an authenticated HTTP API for repository-style reviews focused on logic and conformity issues. It uses the configured AI provider with strict structured output.
 
 Endpoint:
 
@@ -98,7 +100,7 @@ What it does:
 
 - loads files from the repository/app workspace;
 - applies a few static rules locally;
-- sends the selected snippets to the OpenAI Responses API with structured output;
+- sends the selected snippets to the configured AI provider with structured output;
 - returns findings with severity, category, evidence, lines, confidence, and recommendation.
 
 The review engine can be reused by UI actions, background jobs, or deeper workflow orchestration.
@@ -116,6 +118,10 @@ curl -X POST http://localhost:3000/api/advisor/review \
     "maxCharsPerFile": 8000
   }'
 ```
+
+The configured provider receives a `POST` request with `model`, `messages`, and
+`response_format.json_schema`. It may return structured text in `output_text`,
+`choices[0].message.content`, or `content`.
 
 The API only accepts targets inside the application or repository roots, and it bounds the file count and content size sent to the model.
 

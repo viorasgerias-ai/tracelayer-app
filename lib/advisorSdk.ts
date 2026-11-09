@@ -1,7 +1,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { z } from "zod";
-import { DEFAULT_MODEL, getOpenAIClient } from "@/lib/openai";
+import { DEFAULT_MODEL, getAIClient } from "@/lib/ai";
 
 const allowedExtensions = new Set([
   ".ts",
@@ -314,7 +314,7 @@ function buildStaticFindings(file: LoadedFile): StaticRuleFinding[] {
   const routeLooksProtected =
     /(^|\/)app\/api\//.test(file.displayPath) &&
     file.displayPath.endsWith("/route.ts") &&
-    !/\/api\/(login|logout|openai\/health)\//.test(file.displayPath);
+    !/\/api\/(login|logout|ai\/health)\//.test(file.displayPath);
 
   const dbIndex = file.content.indexOf("db.");
   if (routeLooksProtected && dbIndex >= 0 && !file.content.includes("requireSession(")) {
@@ -478,11 +478,9 @@ export class AdvisorSDK {
         ? JSON.stringify(staticFindings, null, 2)
         : "[]";
 
-    const openai = getOpenAIClient();
-    const response = await openai.responses.create({
+    const response = await getAIClient().generateJson({
       model: this.config.model ?? DEFAULT_MODEL,
-      store: false,
-      input: [
+      messages: [
         {
           role: "system",
           content: `
@@ -520,18 +518,12 @@ ${filePayload}
           `.trim()
         }
       ],
-      text: {
-        format: {
-          type: "json_schema",
-          name: "advisor_review_output",
-          strict: true,
-          schema: responseFormatSchema
-        }
-      }
+      schemaName: "advisor_review_output",
+      schema: responseFormatSchema
     });
 
     const parsed = advisorReviewSchema.parse(
-      JSON.parse(response.output_text) as AdvisorReviewResult
+      JSON.parse(response.outputText) as AdvisorReviewResult
     );
 
     const findings = deduplicateFindings([

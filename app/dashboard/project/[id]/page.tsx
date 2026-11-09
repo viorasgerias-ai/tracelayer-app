@@ -2,8 +2,8 @@ import { notFound, redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Header } from "@/components/Header";
-import { OpenAISetupCard } from "@/components/OpenAISetupCard";
-import { isOpenAIConfigured } from "@/lib/openai";
+import { AISetupCard } from "@/components/AISetupCard";
+import { isAIConfigured } from "@/lib/ai";
 import { formatDate } from "@/lib/utils";
 import { GenerateButton } from "./GenerateButton";
 import { ResultCard } from "@/components/ResultCard";
@@ -16,7 +16,7 @@ type PageProps = {
 export default async function ProjectDetailPage({ params }: PageProps) {
   const session = await getSession();
   if (!session) redirect("/login");
-  const openAIConfigured = isOpenAIConfigured();
+  const aiConfigured = isAIConfigured();
 
   const { id } = await params;
   const project = await db.project.findUnique({
@@ -53,9 +53,9 @@ export default async function ProjectDetailPage({ params }: PageProps) {
                   Criado em {formatDate(project.createdAt)}
                 </div>
               </div>
-              <GenerateButton projectId={project.id} openAIConfigured={openAIConfigured} />
+              <GenerateButton projectId={project.id} aiConfigured={aiConfigured} />
             </div>
-            {!openAIConfigured ? <OpenAISetupCard compact /> : null}
+            {!aiConfigured ? <AISetupCard compact /> : null}
 
             <div className="grid" style={{ marginTop: 20 }}>
               <div>

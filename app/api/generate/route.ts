@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { DEFAULT_MODEL, getOpenAIClient, isMissingOpenAIKey } from "@/lib/openai";
+import { DEFAULT_MODEL, getAIClient, isProviderNotConfigured } from "@/lib/ai";
 import { requireSession } from "@/lib/auth";
 import { DecisionTraceOutput } from "@/lib/types";
 import { validateAndStampDecisionTrace } from "@/lib/decisionTrace";
@@ -171,25 +171,17 @@ Gere uma decisão estruturada para dashboard, sem inventar evidências.
       stage: project.stage
     };
 
-    const openai = getOpenAIClient();
-
-    const response = await openai.responses.create({
+    const response = await getAIClient().generateJson({
       model: DEFAULT_MODEL,
-      input: [
+      messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt }
       ],
-      text: {
-        format: {
-          type: "json_schema",
-          name: "decision_trace_output",
-          strict: true,
-          schema: outputSchema
-        }
-      }
+      schemaName: "decision_trace_output",
+      schema: outputSchema
     });
 
-    const content = response.output_text;
+    const content = response.outputText;
     const parsed = validateAndStampDecisionTrace(
       JSON.parse(content) as DecisionTraceOutput,
       traceInput
@@ -203,7 +195,7 @@ Gere uma decisão estruturada para dashboard, sem inventar evidências.
         outputText: JSON.stringify(parsed),
         model: DEFAULT_MODEL,
         status: "completed",
-        responseId: response.id
+        responseId: response.id ?? undefined
       }
     });
 
@@ -216,9 +208,9 @@ Gere uma decisão estruturada para dashboard, sem inventar evidências.
   } catch (error) {
     console.error(error);
 
-    if (isMissingOpenAIKey(error)) {
+    if (isProviderNotConfigured(error)) {
       return NextResponse.json(
-        { error: "OPENAI_API_KEY não configurada no servidor." },
+        { error: "Provedor de IA não configurado no servidor." },
         { status: 500 }
       );
     }
