@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { hasValidAdvisorApiToken, requireSession } from "@/lib/auth";
 import { AdvisorSDK } from "@/lib/advisorSdk";
-import { DEFAULT_MODEL, isMissingOpenAIKey } from "@/lib/openai";
+import { DEFAULT_MODEL, isProviderNotConfigured } from "@/lib/ai";
 
 const schema = z.object({
   targets: z.array(z.string().min(1)).min(1).max(12),
@@ -31,9 +31,9 @@ export async function POST(req: Request) {
       review
     });
   } catch (error) {
-    if (isMissingOpenAIKey(error)) {
+    if (isProviderNotConfigured(error)) {
       return NextResponse.json(
-        { error: "OPENAI_API_KEY não configurada no servidor." },
+        { error: "Provedor de IA não configurado no servidor." },
         { status: 500 }
       );
     }
