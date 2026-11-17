@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
 import { AISetupCard } from "@/components/AISetupCard";
 import { formatDate } from "@/lib/utils";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, explainApiError } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 
 type DashboardData = {
   projects: {
@@ -21,32 +21,32 @@ type DashboardData = {
 };
 
 export default function DashboardPage() {
-  const router = useRouter();
+  const { user } = useAuth();
   const [data, setData] = useState<DashboardData | null>(null);
-  const [email, setEmail] = useState("");
   const [providerConfigured, setProviderConfigured] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     Promise.all([
-      apiFetch<{ email: string }>("/api/session"),
       apiFetch<DashboardData>("/api/projects"),
       apiFetch<{ configured: boolean }>("/api/ai/health")
-    ]).then(([session, projects, health]) => {
-      setEmail(session.email);
+    ]).then(([projects, health]) => {
       setData(projects);
       setProviderConfigured(health.configured);
     }).catch((loadError: unknown) => {
-      if (loadError instanceof Error && loadError.message === "Não autenticado.") {
-        router.replace("/login/");
-        return;
-      }
-      setError(loadError instanceof Error ? loadError.message : "Falha ao carregar o painel.");
+      setError(explainApiError(loadError, "Falha ao carregar o painel."));
     });
-  }, [router]);
+  }, []);
 
   if (!data) {
-    return <main className="page"><div className="container">{error || "Carregando..."}</div></main>;
+    return (
+      <main className="page">
+        <div className="container">
+          <Header />
+          {error || "Carregando..."}
+        </div>
+      </main>
+    );
   }
   const { projects, runCount } = data;
 
@@ -68,7 +68,7 @@ export default function DashboardPage() {
           </div>
           <div className="card">
             <div className="muted">Sessão</div>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>{email}</div>
+            <div style={{ fontSize: 18, fontWeight: 700 }}>{user?.email || user?.displayName}</div>
           </div>
         </div>
 

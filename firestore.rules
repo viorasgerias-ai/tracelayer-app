@@ -1,0 +1,183 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Prototype rules for the TraceLayer decision app. Ownership is the
+// document path, never a field inside the document. There is no role
+// field and no public profile.
+//
+// Collection: users
+// Document ID: Firebase Auth uid
+// Fields:
+//   - email: string (required, 3–320, email shape, must equal the verified token email)
+//   - displayName: string (required, 0–200)
+//   - photoURL: string (optional, https URL, 9–2048)
+//   - createdAt: timestamp (required, request.time on create, immutable)
+//   - updatedAt: timestamp (required, request.time on every write)
+//
+// Collection: users/{uid}/decisions
+// Document ID: backend project id, [A-Za-z0-9_-]{1,128}
+// Fields:
+//   - projectId: string (required, equal to the document id)
+//   - name: string (required, 1–200)
+//   - product, audience, objective: string (required, 1–8000)
+//   - offer, objections: string (required, 0–8000)
+//   - channel, stage: string (required, 0–500)
+//   - runId: string (optional, [A-Za-z0-9_-]{1,64}; cannot be removed once set)
+//   - result: string (optional, JSON of the decision trace, 2–400000 characters;
+//     cannot be removed once set). The trace is validated by the API before
+//     the client stores it. Rules keep it as one bounded string because
+//     checking every nested list item exceeds Firestore's 1000-expression
+//     evaluation limit.
+//   - createdAt: timestamp (required, request.time on create, immutable)
+//   - updatedAt: timestamp (required, request.time on every write)
+//
+// The client does not use where(), orderBy(), or limit().
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.uid;
+    }
+
+    function uidUnchanged() {
+      return !('uid' in request.resource.data)
+        || request.resource.data.uid == request.auth.uid;
+    }
+
+    function uidNotModified() {
+      return !('uid' in request.resource.data)
+        || request.resource.data.uid == resource.data.uid;
+    }
+
+    function isBoundedString(value, minLen, maxLen) {
+      return value is string
+        && value.size() >= minLen
+        && value.size() <= maxLen;
+    }
+
+    function isValidEmail(email) {
+      return isBoundedString(email, 3, 320)
+        && email.matches('^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$');
+    }
+
+    function isKey(value, maxLen) {
+      return isBoundedString(value, 1, maxLen)
+        && value.matches('^[A-Za-z0-9_-]+$');
+    }
+
+    function photoOk(data) {
+      return !('photoURL' in data)
+        || (isBoundedString(data.photoURL, 9, 2048)
+            && data.photoURL.matches('https://.+'));
+    }
+
+    function freshTimestamps() {
+      return request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function preservedCreatedAt() {
+      return request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function userProfileExists(userId) {
+      return exists(/databases/$(database)/documents/users/$(userId));
+    }
+
+    function runIdOk(data) {
+      return !('runId' in data) || isKey(data.runId, 64);
+    }
+
+    function resultOk(data) {
+      return !('result' in data) || isBoundedString(data.result, 2, 400000);
+    }
+
+    function auditFieldsPreserved() {
+      return (!('result' in resource.data) || 'result' in request.resource.data)
+        && (!('runId' in resource.data) || 'runId' in request.resource.data);
+    }
+
+    // Domain validators. Called on both create and update.
+    function isValidUser(data) {
+      return data.keys().hasAll(['email', 'displayName', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['email', 'displayName', 'photoURL', 'createdAt', 'updatedAt'])
+        && isValidEmail(data.email)
+        && data.email == request.auth.token.email
+        && request.auth.token.email_verified == true
+        && isBoundedString(data.displayName, 0, 200)
+        && photoOk(data)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidDecision(data, decisionId) {
+      return isKey(decisionId, 128)
+        && data.keys().hasAll(['projectId', 'name', 'product', 'audience', 'objective', 'offer', 'channel', 'objections', 'stage', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['projectId', 'name', 'product', 'audience', 'objective', 'offer', 'channel', 'objections', 'stage', 'createdAt', 'updatedAt', 'runId', 'result'])
+        && data.projectId == decisionId
+        && isBoundedString(data.name, 1, 200)
+        && isBoundedString(data.product, 1, 8000)
+        && isBoundedString(data.audience, 1, 8000)
+        && isBoundedString(data.objective, 1, 8000)
+        && isBoundedString(data.offer, 0, 8000)
+        && isBoundedString(data.channel, 0, 500)
+        && isBoundedString(data.objections, 0, 8000)
+        && isBoundedString(data.stage, 0, 500)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && runIdOk(data)
+        && resultOk(data);
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId)
+        && isValidUser(request.resource.data)
+        && uidUnchanged()
+        && freshTimestamps();
+      allow update: if isOwner(userId)
+        && isValidUser(request.resource.data)
+        && uidNotModified()
+        && preservedCreatedAt();
+      allow delete: if isOwner(userId);
+
+      match /decisions/{decisionId} {
+        allow read: if isOwner(userId) && userProfileExists(userId);
+        allow create: if isOwner(userId)
+          && userProfileExists(userId)
+          && isValidDecision(request.resource.data, decisionId)
+          && uidUnchanged()
+          && freshTimestamps();
+        allow update: if isOwner(userId)
+          && userProfileExists(userId)
+          && isValidDecision(request.resource.data, decisionId)
+          && uidNotModified()
+          && preservedCreatedAt()
+          && auditFieldsPreserved();
+        allow delete: if isOwner(userId);
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

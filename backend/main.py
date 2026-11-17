@@ -13,10 +13,12 @@ import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterator, Literal, Protocol
+from typing import Annotated, Any, Iterator, Literal, Protocol
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
+
+from backend import firebase_auth
 
 logger = logging.getLogger(__name__)
 app = FastAPI(title="TraceLayer Decision Engine")
@@ -348,6 +350,16 @@ def _require_session(request: Request) -> dict[str, Any]:
     return session
 
 
+def get_current_user(request: Request) -> dict[str, Any]:
+    token = firebase_auth.bearer_token(request)
+    if token is not None:
+        return firebase_auth.user_from_id_token(token)
+    return _require_session(request)
+
+
+CurrentUser = Annotated[dict[str, Any], Depends(get_current_user)]
+
+
 def _login_rate_limit(client_ip: str) -> int:
     now = time.monotonic()
     with _login_attempts_lock:
@@ -369,11 +381,8 @@ def provider_health(request: Request) -> dict[str, Any]:
 
 
 @app.get("/api/session")
-def session_status(request: Request) -> dict[str, Any]:
-    session = _read_session(request.cookies.get(COOKIE_NAME))
-    if session is None:
-        raise HTTPException(status_code=401, detail="Não autenticado.")
-    return {"email": session["email"]}
+def session_status(user: CurrentUser) -> dict[str, Any]:
+    return {"email": user["email"]}
 
 
 @app.post("/api/login")
@@ -416,22 +425,19 @@ def logout(response: Response) -> dict[str, bool]:
 
 
 @app.get("/api/projects")
-def list_projects(request: Request) -> dict[str, Any]:
-    _require_session(request)
+def list_projects(request: Request, _user: CurrentUser) -> dict[str, Any]:
     projects, run_count = _repository(request).list_projects()
     return {"projects": projects, "runCount": run_count}
 
 
 @app.post("/api/projects", status_code=201)
-def create_project(body: ProjectInput, request: Request) -> dict[str, Any]:
-    _require_session(request)
+def create_project(body: ProjectInput, request: Request, _user: CurrentUser) -> dict[str, Any]:
     project = _repository(request).create_project(body)
     return {"project": project}
 
 
 @app.get("/api/projects/{project_id}")
-def get_project(project_id: str, request: Request) -> dict[str, Any]:
-    _require_session(request)
+def get_project(project_id: str, request: Request, _user: CurrentUser) -> dict[str, Any]:
     project = _repository(request).get_project(project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Projeto não encontrado.")
@@ -439,8 +445,7 @@ def get_project(project_id: str, request: Request) -> dict[str, Any]:
 
 
 @app.post("/api/generate")
-async def generate_decision(request: Request, body: GenerateInput) -> dict[str, Any]:
-    _require_session(request)
+async def generate_decision(request: Request, body: GenerateInput, _user: CurrentUser) -> dict[str, Any]:
     project_id = body.projectId.strip()
     if not project_id:
         raise HTTPException(status_code=422, detail="projectId é obrigatório.")

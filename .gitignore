@@ -5,6 +5,10 @@ out/
 .env.local
 .env
 .venv/
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
 __pycache__/
 *.py[cod]
 data/*.sqlite3

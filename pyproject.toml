@@ -6,6 +6,7 @@ dependencies = [
     "fastapi==0.115.11",
     "uvicorn[standard]==0.34.0",
     "python-dotenv==1.0.1",
+    "firebase-admin==7.1.0",
 ]
 
 [project.optional-dependencies]

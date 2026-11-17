@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from backend import main
+from backend import firebase_auth, main
 
 
 @pytest.fixture
@@ -11,6 +11,7 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setenv("ADMIN_PASSWORD", "test-password")
     monkeypatch.setenv("SESSION_SECRET", "test-secret-with-sufficient-entropy")
     monkeypatch.setenv("ENVIRONMENT", "development")
+    monkeypatch.delenv("FIREBASE_PROJECT_ID", raising=False)
     main.app.state.decision_provider = None
     with main._login_attempts_lock:
         main._login_attempts.clear()
@@ -127,6 +128,48 @@ def test_generation_validates_and_persists_decision_trace(client):
     assert generated.status_code == 200
     assert generated.json()["output"]["trilha_auditavel"]["versao_decisao"] == "decision-output.v2"
     assert details.json()["project"]["runs"][0]["id"] == generated.json()["runId"]
+
+
+def test_bearer_token_is_rejected_when_firebase_is_not_configured(client):
+    _login(client)
+    response = client.get("/api/projects", headers={"Authorization": "Bearer not-a-jwt"})
+
+    assert response.status_code == 401
+
+
+def test_empty_bearer_token_does_not_fall_back_to_the_session(client):
+    _login(client)
+    response = client.get("/api/projects", headers={"Authorization": "Bearer "})
+
+    assert response.status_code == 401
+
+
+def test_non_bearer_authorization_keeps_the_session(client):
+    _login(client)
+    response = client.get("/api/projects", headers={"Authorization": "Basic abc"})
+
+    assert response.status_code == 200
+
+
+def test_verified_firebase_id_token_authorizes_requests(client, monkeypatch):
+    monkeypatch.setenv("FIREBASE_PROJECT_ID", "compl-p-alpha")
+    monkeypatch.setattr(
+        firebase_auth,
+        "verify_firebase_id_token",
+        lambda token: {"uid": "user-1", "email": "person@example.com"} if token == "signed-token" else {},
+    )
+
+    headers = {"Authorization": "Bearer signed-token"}
+    listed = client.get("/api/projects", headers=headers)
+    session = client.get("/api/session", headers=headers)
+    missing = client.post("/api/generate", json={"projectId": "missing"}, headers=headers)
+    rejected = client.get("/api/projects", headers={"Authorization": "Bearer signed-token-without-uid"})
+
+    assert listed.status_code == 200
+    assert listed.json()["projects"] == []
+    assert session.json()["email"] == "person@example.com"
+    assert missing.status_code == 404
+    assert rejected.status_code == 401
 
 
 def test_signed_sessions_reject_tampering_and_expiration(monkeypatch):

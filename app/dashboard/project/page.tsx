@@ -6,7 +6,7 @@ import { Header } from "@/components/Header";
 import { AISetupCard } from "@/components/AISetupCard";
 import { ResultCard } from "@/components/ResultCard";
 import { GenerateButton } from "./GenerateButton";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, explainApiError } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 import { MarketingOutput } from "@/lib/types";
 
@@ -53,16 +53,19 @@ export default function ProjectDetailPage() {
       setProject(result.project);
       setProviderConfigured(health.configured);
     }).catch((loadError: unknown) => {
-      if (loadError instanceof Error && loadError.message === "Não autenticado.") {
-        router.replace("/login/");
-        return;
-      }
-      setError(loadError instanceof Error ? loadError.message : "Falha ao carregar o projeto.");
+      setError(explainApiError(loadError, "Falha ao carregar o projeto."));
     });
   }, [router]);
 
   if (!project) {
-    return <main className="page"><div className="container">{error || "Carregando..."}</div></main>;
+    return (
+      <main className="page">
+        <div className="container">
+          <Header />
+          {error || "Carregando..."}
+        </div>
+      </main>
+    );
   }
 
   const latestRun = project.runs[0];
@@ -89,6 +92,16 @@ export default function ProjectDetailPage() {
               </div>
               <GenerateButton
                 projectId={projectId}
+                request={{
+                  name: project.name,
+                  product: project.product,
+                  audience: project.audience,
+                  objective: project.objective,
+                  offer: project.offer ?? "",
+                  channel: project.channel ?? "",
+                  objections: project.objections ?? "",
+                  stage: project.stage ?? ""
+                }}
                 providerConfigured={providerConfigured}
                 onGenerated={() => window.location.reload()}
               />
