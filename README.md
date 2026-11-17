@@ -2,6 +2,10 @@
 
 Aplicação de apoio à decisão estruturada. O produto mantém o foco em briefing, fatos, hipóteses, critérios, decisão, plano e trilha auditável; não inclui SDKs de análise de repositórios nem métricas de sinais.
 
+## Licença
+
+[PolyForm Noncommercial 1.0.0](LICENSE): uso, cópia e alteração gratuitos para fins não comerciais. Qualquer uso comercial exige autorização do autor.
+
 ## Arquitetura
 
 - Interface web Next.js exportada como arquivos estáticos.
