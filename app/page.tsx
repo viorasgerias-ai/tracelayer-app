@@ -13,8 +13,8 @@ export default function HomePage() {
             e trilha auditável para revisão.
           </p>
           <div className="row" style={{ marginTop: 20 }}>
-            <Link href="/login" className="button">Entrar</Link>
-            <Link href="/dashboard" className="button secondary">Ver dashboard</Link>
+            <Link href="/login/" className="button">Entrar</Link>
+            <Link href="/dashboard/" className="button secondary">Ver dashboard</Link>
           </div>
         </div>
       </div>

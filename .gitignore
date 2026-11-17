@@ -1,6 +1,10 @@
 node_modules/
 .next/
+out/
 *.tsbuildinfo
 .env.local
-prisma/*.db
-prisma/*.db-journal
+.env
+.venv/
+__pycache__/
+*.py[cod]
+data/*.sqlite3

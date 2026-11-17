@@ -1,48 +1,35 @@
-import { redirect } from "next/navigation";
-import { getSession } from "@/lib/auth";
+"use client";
+
+import { FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
-import { db } from "@/lib/db";
+import { apiFetch } from "@/lib/api";
 
-export default async function NewProjectPage() {
-  const session = await getSession();
-  if (!session) redirect("/login");
+export default function NewProjectPage() {
+  const router = useRouter();
+  const [error, setError] = useState("");
 
-  async function createProject(formData: FormData) {
-    "use server";
-
-    const actionSession = await getSession();
-    if (!actionSession) redirect("/login");
-
-    const name = String(formData.get("name") || "");
-    const product = String(formData.get("product") || "");
-    const audience = String(formData.get("audience") || "");
-    const objective = String(formData.get("objective") || "");
-    const offer = String(formData.get("offer") || "");
-    const channel = String(formData.get("channel") || "");
-    const objections = String(formData.get("objections") || "");
-    const stage = String(formData.get("stage") || "");
-
-    const project = await db.project.create({
-      data: {
-        name,
-        product,
-        audience,
-        objective,
-        offer,
-        channel,
-        objections,
-        stage
-      }
-    });
-
-    redirect(`/dashboard/project/${project.id}`);
+  async function createProject(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    const formData = new FormData(event.currentTarget);
+    const values = Object.fromEntries(formData.entries());
+    try {
+      const { project } = await apiFetch<{ project: { id: string } }>("/api/projects", {
+        method: "POST",
+        body: JSON.stringify(values)
+      });
+      router.push(`/dashboard/project/?id=${encodeURIComponent(project.id)}`);
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : "Falha ao salvar o caso.");
+    }
   }
 
   return (
     <main className="page">
       <div className="container">
         <Header />
-        <form className="card grid" action={createProject}>
+        <form className="card grid" onSubmit={createProject}>
           <div>
             <h1 style={{ marginTop: 0 }}>Novo projeto</h1>
             <p className="muted">
@@ -91,6 +78,7 @@ export default async function NewProjectPage() {
             <input className="input" name="stage" placeholder="triagem, validação, decisão, execução..." />
           </div>
 
+          {error ? <div role="alert">{error}</div> : null}
           <button className="button" type="submit">Salvar caso</button>
         </form>
       </div>

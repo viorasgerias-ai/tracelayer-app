@@ -1,37 +1,30 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { apiFetch } from "@/lib/api";
 
 type GenerateButtonProps = {
   projectId: string;
-  aiConfigured: boolean;
+  providerConfigured: boolean;
+  onGenerated: () => void;
 };
 
-export function GenerateButton({ projectId, aiConfigured }: GenerateButtonProps) {
-  const router = useRouter();
+export function GenerateButton({ projectId, providerConfigured, onGenerated }: GenerateButtonProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const aiSetupHintId = `ai-setup-hint-${projectId}`;
+  const providerHintId = `provider-hint-${projectId}`;
 
   async function generate() {
     try {
       setLoading(true);
       setError("");
 
-      const res = await fetch("/api/generate", {
+      await apiFetch("/api/generate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId })
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "Erro ao gerar.");
-      }
-
-      router.refresh();
+      onGenerated();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro inesperado.");
     } finally {
@@ -45,16 +38,16 @@ export function GenerateButton({ projectId, aiConfigured }: GenerateButtonProps)
         <button
           className="button"
           onClick={generate}
-          disabled={loading || !aiConfigured}
-          aria-describedby={!aiConfigured ? aiSetupHintId : undefined}
+          disabled={loading || !providerConfigured}
+          aria-describedby={!providerConfigured ? providerHintId : undefined}
         >
           {loading ? "Gerando..." : "Gerar decisão"}
         </button>
         {error ? <span style={{ color: "#ff9eb0" }}>{error}</span> : null}
       </div>
-      {!aiConfigured ? (
-        <div id={aiSetupHintId} className="muted" style={{ marginTop: 8 }}>
-          Configure <code>AI_API_URL</code> no servidor para habilitar este botão.
+      {!providerConfigured ? (
+        <div id={providerHintId} className="muted" style={{ marginTop: 8 }}>
+          Integre um DecisionProvider com as credenciais gerenciadas pela plataforma.
         </div>
       ) : null}
     </div>

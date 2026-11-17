@@ -1,30 +1,61 @@
+"use client";
+
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { db } from "@/lib/db";
-import { getSession } from "@/lib/auth";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
 import { AISetupCard } from "@/components/AISetupCard";
-import { isAIConfigured } from "@/lib/ai";
 import { formatDate } from "@/lib/utils";
+import { apiFetch } from "@/lib/api";
 
-export default async function DashboardPage() {
-  const session = await getSession();
-  if (!session) redirect("/login");
-  const aiConfigured = isAIConfigured();
+type DashboardData = {
+  projects: {
+    id: string;
+    name: string;
+    channel: string | null;
+    objective: string;
+    createdAt: string;
+    runCount: number;
+  }[];
+  runCount: number;
+};
 
-  const [projects, runsCount] = await Promise.all([
-    db.project.findMany({
-      orderBy: { createdAt: "desc" },
-      include: { runs: { orderBy: { createdAt: "desc" }, take: 1 } }
-    }),
-    db.run.count()
-  ]);
+export default function DashboardPage() {
+  const router = useRouter();
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [email, setEmail] = useState("");
+  const [providerConfigured, setProviderConfigured] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    Promise.all([
+      apiFetch<{ email: string }>("/api/session"),
+      apiFetch<DashboardData>("/api/projects"),
+      apiFetch<{ configured: boolean }>("/api/ai/health")
+    ]).then(([session, projects, health]) => {
+      setEmail(session.email);
+      setData(projects);
+      setProviderConfigured(health.configured);
+    }).catch((loadError: unknown) => {
+      if (loadError instanceof Error && loadError.message === "Não autenticado.") {
+        router.replace("/login/");
+        return;
+      }
+      setError(loadError instanceof Error ? loadError.message : "Falha ao carregar o painel.");
+    });
+  }, [router]);
+
+  if (!data) {
+    return <main className="page"><div className="container">{error || "Carregando..."}</div></main>;
+  }
+  const { projects, runCount } = data;
 
   return (
     <main className="page">
       <div className="container">
         <Header />
-        {!aiConfigured ? <AISetupCard /> : null}
+        {!providerConfigured ? <AISetupCard /> : null}
+        {error ? <div className="card">{error}</div> : null}
 
         <div className="grid-3" style={{ marginBottom: 16 }}>
           <div className="card">
@@ -33,11 +64,11 @@ export default async function DashboardPage() {
           </div>
           <div className="card">
             <div className="muted">Execuções</div>
-            <div style={{ fontSize: 32, fontWeight: 700 }}>{runsCount}</div>
+            <div style={{ fontSize: 32, fontWeight: 700 }}>{runCount}</div>
           </div>
           <div className="card">
             <div className="muted">Sessão</div>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>{session.email}</div>
+            <div style={{ fontSize: 18, fontWeight: 700 }}>{email}</div>
           </div>
         </div>
 
@@ -46,7 +77,7 @@ export default async function DashboardPage() {
             <h2 style={{ margin: 0 }}>Projetos</h2>
             <div className="muted">Crie o briefing e gere uma decisão rastreável.</div>
           </div>
-          <Link href="/dashboard/new" className="button">
+          <Link href="/dashboard/new/" className="button">
             Novo projeto
           </Link>
         </div>
@@ -61,7 +92,7 @@ export default async function DashboardPage() {
             </div>
           ) : (
             projects.map((project) => (
-              <Link key={project.id} href={`/dashboard/project/${project.id}`} className="card">
+              <Link key={project.id} href={`/dashboard/project/?id=${encodeURIComponent(project.id)}`} className="card">
                 <div className="space-between">
                   <div>
                     <strong>{project.name}</strong>
@@ -69,7 +100,7 @@ export default async function DashboardPage() {
                       {project.channel || "Canal não informado"} • {formatDate(project.createdAt)}
                     </div>
                   </div>
-                  <span className="badge">{project.runs.length} última geração</span>
+                  <span className="badge">{project.runCount} execuções</span>
                 </div>
                 <div className="muted" style={{ marginTop: 14 }}>
                   {project.objective}
