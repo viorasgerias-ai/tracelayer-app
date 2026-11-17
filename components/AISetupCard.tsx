@@ -16,12 +16,11 @@ export function AISetupCard({ compact = false }: AISetupCardProps) {
       }}
     >
       <div className="badge" style={{ marginBottom: 12 }}>
-        Provedor de IA não configurado
+        Provedor de decisão não integrado
       </div>
-      <strong>Configure o endpoint em AI_API_URL para liberar as gerações.</strong>
+      <strong>Integre um DecisionProvider para habilitar as decisões.</strong>
       <div className="muted" style={{ marginTop: 8 }}>
-        Preencha <code>.env.local</code> com <code>AI_API_URL</code> e, se necessário,
-        <code>AI_API_KEY</code>. Reinicie o servidor caso ele já esteja em execução.
+        Use as credenciais gerenciadas pela plataforma de implantação. Não configure chaves de API no aplicativo.
       </div>
     </div>
   );

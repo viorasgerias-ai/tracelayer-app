@@ -1,148 +1,46 @@
-# A Força Dashboard
+# TraceLayer — decisões guiadas e trilhas auditáveis
 
-This is the canonical application in this repository.
+Aplicação de apoio à decisão estruturada. O produto mantém o foco em briefing, fatos, hipóteses, critérios, decisão, plano e trilha auditável; não inclui SDKs de análise de repositórios nem métricas de sinais.
 
-Prototype dashboard for structured decision traces.
+## Arquitetura
 
-It turns a raw briefing into:
+- Interface web Next.js exportada como arquivos estáticos.
+- Backend Python 3.13.3 em ASGI, organizado para ser adaptado a funções serverless.
+- Contrato `DecisionProvider` desacoplado de fornecedores de IA e sem chamadas autenticadas por chave de API.
+- Nenhum SDK de nuvem ou configuração Terraform específica de provedor.
 
-- briefing;
-- fact extraction;
-- hypotheses;
-- criteria;
-- decision;
-- execution plan;
-- auditable trail.
+A implantação deve encaminhar `/api/*` para `backend.main:app` e servir o frontend estático na mesma origem. A adaptação de implantação é intencionalmente deixada para cada plataforma. Para integração de IA, implemente e registre um `DecisionProvider`; use a identidade gerenciada ou a integração do Secret Manager oferecida pela plataforma para obter credenciais. Não inclua segredos no repositório, no bundle do frontend ou em chamadas configuradas por chaves estáticas.
 
-## Stack
+O SQLite é apenas o armazenamento local inicial. Em produção serverless, implemente e registre um `DecisionRepository` persistente por `configure_repository`; o sistema de arquivos local de funções pode ser efêmero. O limitador de tentativas de login também é local ao processo, portanto a proteção distribuída deve ser configurada na camada de entrada da implantação.
 
-- Next.js App Router
-- TypeScript
-- Prisma
-- SQLite
-- Configurable AI provider over HTTP
+## Configuração local
 
-## Setup
-
-Create `.env.local` from the example file:
+Use Python 3.13.3 e Node.js 22. Copie `.env.example` para `.env` e preencha as credenciais administrativas e o segredo de sessão por variáveis locais. Em produção, configure esses valores pelo Secret Manager da plataforma.
 
 ```bash
-cp .env.example .env.local
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+npm ci
 ```
 
-Then fill in the server-side values:
+Inicie o backend e a interface em terminais separados:
 
 ```bash
-DATABASE_URL="file:./dev.db"
-AI_API_URL="https://your-provider.example/v1/chat/completions"
-AI_API_KEY="replace-if-required"
-AI_MODEL="your-model"
-AI_PROVIDER_NAME="your-provider"
-ADMIN_EMAIL="admin@example.com"
-ADMIN_PASSWORD="replace-me"
-SESSION_SECRET="replace-me"
-ADVISOR_API_TOKEN="replace-with-a-long-random-token"
-```
-
-Install and prepare:
-
-```bash
-npm install
-npx prisma generate
-npx prisma db push
+uvicorn backend.main:app --reload --env-file .env
 npm run dev
 ```
 
-Check the AI provider wiring without making a model call:
+O servidor Next.js encaminha `/api/*` para o backend local durante o desenvolvimento. Em produção, configure o mesmo encaminhamento na camada de implantação para manter frontend e API na mesma origem.
+
+Para gerar os arquivos estáticos da interface:
 
 ```bash
-curl http://localhost:3000/api/ai/health
+npm run build
 ```
 
-Open:
+## Contrato de decisão
 
-```bash
-http://localhost:3000
-```
+`backend.main.DecisionProvider` define a única integração necessária para geração. O provedor recebe os dados do caso e retorna o objeto estruturado de decisão; o backend valida o formato, calcula a referência da trilha e persiste a execução. A implementação concreta do provedor e a forma de obter credenciais ficam a cargo da plataforma escolhida.
 
-## Use
-
-1. Login with the configured admin.
-2. Create a decision case.
-3. Click **Gerar decisão**.
-4. Review the trace in the dashboard.
-
-## Advisor SDK MVP
-
-The reusable SDK is in `lib/advisorSdk.ts` and is exposed as an authenticated HTTP API for repository-style reviews focused on logic and conformity issues. It uses the configured AI provider with strict structured output.
-
-Endpoint:
-
-```text
-POST /api/advisor/review
-```
-
-Example payload:
-
-```json
-{
-  "targets": [
-    "tracelayer-app/app/api",
-    "tracelayer-app/lib/auth.ts"
-  ],
-  "focus": "Detectar lacunas de autenticação, riscos de governança e erros lógicos silenciosos.",
-  "maxFiles": 6,
-  "maxCharsPerFile": 8000
-}
-```
-
-What it does:
-
-- loads files from the repository/app workspace;
-- applies a few static rules locally;
-- sends the selected snippets to the configured AI provider with structured output;
-- returns findings with severity, category, evidence, lines, confidence, and recommendation.
-
-The review engine can be reused by UI actions, background jobs, or deeper workflow orchestration.
-
-Authenticate either with the dashboard session cookie or a server-side Bearer token. Set `ADVISOR_API_TOKEN` in `.env.local`, then call it from another system:
-
-```bash
-curl -X POST http://localhost:3000/api/advisor/review \
-  -H "Authorization: Bearer $ADVISOR_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  --data '{
-    "targets": ["tracelayer-app/app/api", "tracelayer-app/lib/auth.ts"],
-    "focus": "Revisar autenticação, governança e riscos lógicos.",
-    "maxFiles": 6,
-    "maxCharsPerFile": 8000
-  }'
-```
-
-The configured provider receives a `POST` request with `model`, `messages`, and
-`response_format.json_schema`. It may return structured text in `output_text`,
-`choices[0].message.content`, or `content`.
-
-The API only accepts targets inside the application or repository roots, and it bounds the file count and content size sent to the model.
-
-## Current Product Thesis
-
-Do not sell "AI".
-
-Sell:
-
-- reduction of bad decisions;
-- traceability;
-- explicit criteria;
-- consistent execution;
-- operational memory;
-- governance for review.
-
-## Next Technical Hardening
-
-- Shared schema module for app and engine;
-- runtime validation before saving output;
-- request/response tracing;
-- decision version migrations;
-- account-level logs;
-- exportable audit reports.
+O endpoint de revisão de código/Advisor SDK foi removido para manter o domínio do produto centrado em decisões guiadas.
